@@ -2,7 +2,6 @@ from aiogram import types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from config import ADMIN_ID
 from database import (
     get_all_bookings, get_all_users, get_computers,
     add_computer, delete_computer, toggle_computer_active,
@@ -10,8 +9,6 @@ from database import (
 )
 from keyboards import admin_panel_keyboard
 from states import AdminState
-
-# ---- Старые функции ----
 
 async def admin_panel_logic(source):
     if isinstance(source, types.Message):
@@ -61,8 +58,6 @@ async def admin_users_logic(source):
         await source.message.edit_text(text, reply_markup=keyboard)
         await source.answer()
     log_admin_action(source.from_user.id, "Просмотр списка пользователей")
-
-# ---- Новые функции: управление компьютерами ----
 
 async def admin_computers_logic(source):
     computers = get_computers(active_only=False)
@@ -143,8 +138,6 @@ async def admin_toggle_computer_message(message: types.Message, state: FSMContex
         await message.answer(f"❌ Компьютер с ID {comp_id} не найден.")
     await state.clear()
     await admin_computers_logic(message)
-
-# ---- Логи администратора ----
 
 async def admin_logs_logic(source):
     logs = get_admin_logs(20)

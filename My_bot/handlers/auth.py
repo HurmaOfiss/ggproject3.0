@@ -60,7 +60,6 @@ async def register_password(message: types.Message, state: FSMContext):
     name = data["name"]
     phone = data["phone"]
     user = message.from_user
-    # Хешируем пароль через bcrypt
     password_hash = hash_password(password)
     success = register_user(user.id, nickname, name, phone, password_hash, user.username, user.full_name)
     if success:

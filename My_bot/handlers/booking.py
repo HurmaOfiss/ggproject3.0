@@ -45,7 +45,6 @@ async def process_start_time(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(start_time=start_time)
     await state.set_state(BookingState.choosing_end_date)
 
-    # Показываем выбор даты окончания (до 7 дней от start_date)
     data = await state.get_data()
     start_date = data["start_date"]
     start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -64,7 +63,6 @@ async def process_end_date(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(end_date=end_date)
     await state.set_state(BookingState.choosing_end_time)
 
-    # Показываем выбор времени окончания (от 00:00 до 23:00)
     hours = list(range(0, 24))
     buttons = [[InlineKeyboardButton(text=f"{h:02d}:00", callback_data=f"endtime_{h:02d}:00")] for h in hours]
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="booking_start")])
@@ -82,7 +80,6 @@ async def process_end_time(callback: types.CallbackQuery, state: FSMContext):
     start_time = data["start_time"]
     end_date = data["end_date"]
 
-    # Проверяем, что конечная дата+время позже начальных
     start_dt = datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M")
     end_dt = datetime.strptime(f"{end_date} {end_time}", "%Y-%m-%d %H:%M")
     if end_dt <= start_dt:

@@ -15,8 +15,6 @@ EQUIPMENT_PHOTOS = [
     "headset5.jpg"
 ]
 
-# База данных будет лежать в подпапке data/
 DB_PATH = "data/godje_club.db"
 
-# Уведомления: за сколько минут до начала отправлять напоминание
 NOTIFY_MINUTES = 60

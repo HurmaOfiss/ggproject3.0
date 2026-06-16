@@ -4,7 +4,6 @@ import os
 from config import DB_PATH
 
 def init_db():
-    # Создаём директорию для базы, если её нет
     db_dir = os.path.dirname(DB_PATH)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
@@ -45,13 +44,11 @@ def init_db():
             FOREIGN KEY (computer_id) REFERENCES computers(id)
         )
     """)
-    # Добавляем поле notified для миграции
     try:
         cursor.execute("ALTER TABLE bookings ADD COLUMN notified BOOLEAN DEFAULT 0")
     except sqlite3.OperationalError:
         pass
 
-    # Таблица логов администратора
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS admin_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +61,6 @@ def init_db():
 
     conn.commit()
 
-    # Заполнение компьютеров, если пусто
     cursor.execute("SELECT COUNT(*) FROM computers")
     if cursor.fetchone()[0] == 0:
         for i in range(1, 16):
@@ -75,7 +71,6 @@ def init_db():
 def get_db_connection():
     return sqlite3.connect(DB_PATH)
 
-# --- Хеширование паролей (bcrypt) ---
 def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
@@ -83,7 +78,6 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
-# --- Users ---
 def register_user(user_id: int, nickname: str, name: str, phone: str, password_hash: str,
                   telegram_username: str = None, telegram_full_name: str = None) -> bool:
     conn = get_db_connection()
@@ -112,7 +106,6 @@ def register_user(user_id: int, nickname: str, name: str, phone: str, password_h
         conn.close()
 
 def login_user(user_id: int, nickname: str, password: str) -> bool:
-    """Принимает plain пароль, сверяет с хешем через bcrypt."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT password_hash FROM users WHERE nickname = ?", (nickname,))
@@ -147,7 +140,6 @@ def get_all_users() -> list:
     conn.close()
     return users
 
-# --- Computers ---
 def get_computers(active_only=True) -> list:
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -198,7 +190,6 @@ def toggle_computer_active(computer_id: int) -> bool:
     conn.close()
     return True
 
-# --- Bookings ---
 def is_computer_free(computer_id: int, start_date: str, start_time: str, end_date: str, end_time: str) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -262,7 +253,6 @@ def get_all_bookings() -> list:
     conn.close()
     return bookings
 
-# --- Уведомления ---
 def get_bookings_to_notify(minutes_before: int) -> list:
     import datetime
     now = datetime.datetime.now()
@@ -289,7 +279,6 @@ def mark_notified(booking_id: int):
     conn.commit()
     conn.close()
 
-# --- Логирование администратора ---
 def log_admin_action(admin_id: int, action: str, details: str = None):
     conn = get_db_connection()
     cursor = conn.cursor()

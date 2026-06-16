@@ -27,7 +27,6 @@ from handlers import (
 logging.basicConfig(level=logging.INFO)
 
 async def notify_task(bot: Bot):
-    """Фоновая задача: проверка броней и отправка уведомлений."""
     while True:
         try:
             bookings = get_bookings_to_notify(NOTIFY_MINUTES)
@@ -53,14 +52,11 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Middleware
     dp.message.middleware(AuthMiddleware())
     dp.callback_query.middleware(CallbackAuthMiddleware())
 
-    # Команды
     dp.message.register(cmd_start, Command("start"))
 
-    # Auth handlers
     dp.message.register(register_start, lambda msg: msg.text == "📝 Регистрация")
     dp.message.register(register_nickname, RegisterState.nickname)
     dp.message.register(register_name, RegisterState.name)
@@ -71,21 +67,18 @@ async def main():
     dp.message.register(login_nickname, LoginState.nickname)
     dp.message.register(login_password, LoginState.password)
 
-    # Main menu reply handlers
     dp.message.register(booking_start_logic, lambda msg: msg.text == "🖥️ Забронировать компьютер")
     dp.message.register(show_my_bookings_logic, lambda msg: msg.text == "📋 Мои бронирования")
     dp.message.register(tariffs_logic, lambda msg: msg.text == "💰 Тарифы")
     dp.message.register(info_logic, lambda msg: msg.text == "ℹ️ О клубе")
     dp.message.register(admin_panel_logic, lambda msg: msg.text == "⚙️ Админ-панель")
 
-    # Booking callbacks
     dp.callback_query.register(process_start_date, BookingState.choosing_start_date, lambda c: c.data.startswith("startdate_"))
     dp.callback_query.register(process_start_time, BookingState.choosing_start_time, lambda c: c.data.startswith("starttime_"))
     dp.callback_query.register(process_end_date, BookingState.choosing_end_date, lambda c: c.data.startswith("enddate_"))
     dp.callback_query.register(process_end_time, BookingState.choosing_end_time, lambda c: c.data.startswith("endtime_"))
     dp.callback_query.register(process_computer, BookingState.choosing_computer, lambda c: c.data.startswith("comp_"))
 
-    # Other callbacks
     dp.callback_query.register(booking_start_logic, lambda c: c.data == "booking_start")
     dp.callback_query.register(show_my_bookings_logic, lambda c: c.data == "my_bookings")
     dp.callback_query.register(tariffs_logic, lambda c: c.data == "tariffs")
@@ -95,7 +88,6 @@ async def main():
     dp.callback_query.register(back_to_main_callback, lambda c: c.data == "back_to_main")
     dp.callback_query.register(cancel_flow_callback, lambda c: c.data == "cancel_booking_flow")
 
-    # Admin callbacks
     dp.callback_query.register(admin_panel_logic, lambda c: c.data == "admin_panel")
     dp.callback_query.register(admin_bookings_logic, lambda c: c.data == "admin_bookings")
     dp.callback_query.register(admin_users_logic, lambda c: c.data == "admin_users")
@@ -105,20 +97,16 @@ async def main():
     dp.callback_query.register(admin_toggle_computer_callback, lambda c: c.data == "admin_toggle_computer")
     dp.callback_query.register(admin_logs_logic, lambda c: c.data == "admin_logs")
 
-    # Admin message handlers (ввод данных)
     dp.message.register(admin_add_computer_message, StateFilter(AdminState.add_computer))
     dp.message.register(admin_delete_computer_message, StateFilter(AdminState.delete_computer))
     dp.message.register(admin_toggle_computer_message, StateFilter(AdminState.toggle_computer))
 
-    # Fallback
     @dp.callback_query()
     async def unknown_callback(callback):
         await callback.answer("Неизвестная команда.", show_alert=False)
 
-    # ✅ Удаляем вебхук, чтобы избежать конфликтов с параллельными экземплярами
     await bot.delete_webhook(drop_pending_updates=True)
 
-    # Запуск фоновой задачи
     asyncio.create_task(notify_task(bot))
 
     await dp.start_polling(bot)
