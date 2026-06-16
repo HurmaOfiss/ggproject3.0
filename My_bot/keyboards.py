@@ -36,6 +36,8 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(text="📋 Просмотр броней", callback_data="admin_bookings")],
         [InlineKeyboardButton(text="👥 Просмотр пользователей", callback_data="admin_users")],
+        [InlineKeyboardButton(text="🖥️ Управление компьютерами", callback_data="admin_computers")],
+        [InlineKeyboardButton(text="📜 Логи админа", callback_data="admin_logs")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: godje_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - db_data:/app/data          # том для базы данных (директория)
+      - ./цены.jpg:/app/цены.jpg
+      - ./гарнитура1.jpg:/app/гарнитура1.jpg
+      - ./гарнитура2.jpg:/app/гарнитура2.jpg
+      - ./гарнитура3.jpg:/app/гарнитура3.jpg
+      - ./гарнитура4.jpg:/app/гарнитура4.jpg
+      - ./гарнитура5.jpg:/app/гарнитура5.jpg
+
+volumes:
+  db_data:      # объявление тома

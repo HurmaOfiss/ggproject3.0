@@ -4,7 +4,7 @@ from aiogram import types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from config import ADMIN_ID
+from config import ADMIN_ID, NOTIFY_MINUTES
 from database import (
     get_computers, is_computer_free, add_booking,
     get_user_bookings, cancel_booking, get_db_connection
@@ -43,25 +43,34 @@ async def process_start_date(callback: types.CallbackQuery, state: FSMContext):
 async def process_start_time(callback: types.CallbackQuery, state: FSMContext):
     start_time = callback.data.split("_")[1]
     await state.update_data(start_time=start_time)
-    await state.set_state(BookingState.choosing_end_time)
+    await state.set_state(BookingState.choosing_end_date)
 
+    # Показываем выбор даты окончания (до 7 дней от start_date)
     data = await state.get_data()
     start_date = data["start_date"]
-    start_hour = int(start_time.split(":")[0])
-    start_minute = int(start_time.split(":")[1]) if ":" in start_time else 0
-    start_dt = datetime.strptime(f"{start_date} {start_hour:02d}:{start_minute:02d}", "%Y-%m-%d %H:%M")
-
-    possible_hours = []
-    for delta in range(1, 13):
-        end_dt = start_dt + timedelta(hours=delta)
-        possible_hours.append(end_dt.hour)
-    possible_hours = sorted(set(possible_hours))
-
-    buttons = [[InlineKeyboardButton(text=f"{h:02d}:00", callback_data=f"endtime_{h:02d}:00")] for h in possible_hours]
+    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_dates = [start_dt + timedelta(days=i) for i in range(8)]  # до 7 дней
+    buttons = [[InlineKeyboardButton(text=d.strftime("%d.%m.%Y"), callback_data=f"enddate_{d.strftime('%Y-%m-%d')}")] for d in end_dates]
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="booking_start")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     await callback.message.edit_text(
-        f"🕒 Выберите время окончания (не более 12 часов от начала):",
+        "📅 Выберите дату окончания бронирования (до 7 дней от начала):",
+        reply_markup=keyboard
+    )
+    await callback.answer()
+
+async def process_end_date(callback: types.CallbackQuery, state: FSMContext):
+    end_date = callback.data.split("_")[1]
+    await state.update_data(end_date=end_date)
+    await state.set_state(BookingState.choosing_end_time)
+
+    # Показываем выбор времени окончания (от 00:00 до 23:00)
+    hours = list(range(0, 24))
+    buttons = [[InlineKeyboardButton(text=f"{h:02d}:00", callback_data=f"endtime_{h:02d}:00")] for h in hours]
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="booking_start")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(
+        f"🕒 Выберите время окончания на {datetime.strptime(end_date, '%Y-%m-%d').strftime('%d.%m.%Y')}:",
         reply_markup=keyboard
     )
     await callback.answer()
@@ -71,15 +80,16 @@ async def process_end_time(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     start_date = data["start_date"]
     start_time = data["start_time"]
-    start_dt = datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M")
-    end_hour = int(end_time.split(":")[0])
-    end_dt = start_dt.replace(hour=end_hour)
-    if end_dt <= start_dt:
-        end_dt += timedelta(days=1)
-    end_date = end_dt.strftime("%Y-%m-%d")
-    end_time_str = end_dt.strftime("%H:%M")
+    end_date = data["end_date"]
 
-    await state.update_data(end_date=end_date, end_time=end_time_str)
+    # Проверяем, что конечная дата+время позже начальных
+    start_dt = datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M")
+    end_dt = datetime.strptime(f"{end_date} {end_time}", "%Y-%m-%d %H:%M")
+    if end_dt <= start_dt:
+        await callback.answer("Время окончания должно быть позже времени начала!", show_alert=True)
+        return
+
+    await state.update_data(end_time=end_time)
     await state.set_state(BookingState.choosing_computer)
 
     computers = get_computers()
@@ -89,8 +99,8 @@ async def process_end_time(callback: types.CallbackQuery, state: FSMContext):
         return
 
     free_computers = []
-    for comp_id, comp_num in computers:
-        if is_computer_free(comp_id, start_date, start_time, end_date, end_time_str):
+    for comp_id, comp_num, _ in computers:
+        if is_computer_free(comp_id, start_date, start_time, end_date, end_time):
             free_computers.append((comp_id, comp_num))
 
     if not free_computers:
@@ -108,7 +118,7 @@ async def process_end_time(callback: types.CallbackQuery, state: FSMContext):
 
     await callback.message.edit_text(
         f"🖥️ Выберите свободный компьютер\n"
-        f"📅 {start_date} {start_time} – {end_date} {end_time_str}:",
+        f"📅 {start_date} {start_time} – {end_date} {end_time}:",
         reply_markup=keyboard
     )
     await callback.answer()
@@ -153,7 +163,6 @@ async def process_computer(callback: types.CallbackQuery, state: FSMContext):
         )
     await state.clear()
     await callback.answer()
-
 async def show_my_bookings_logic(source):
     user_id = source.from_user.id
     bookings = get_user_bookings(user_id)

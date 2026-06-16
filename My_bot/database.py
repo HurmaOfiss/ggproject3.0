@@ -1,7 +1,14 @@
 import sqlite3
+import bcrypt
+import os
 from config import DB_PATH
 
 def init_db():
+    # Создаём директорию для базы, если её нет
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
@@ -33,18 +40,31 @@ def init_db():
             end_date TEXT NOT NULL,
             end_time TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            notified BOOLEAN DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES users(user_id),
             FOREIGN KEY (computer_id) REFERENCES computers(id)
         )
     """)
-    # Добавляем колонки, если их нет (для миграции)
-    for col in ["start_date", "start_time", "end_date", "end_time"]:
-        try:
-            cursor.execute(f"ALTER TABLE bookings ADD COLUMN {col} TEXT")
-        except sqlite3.OperationalError:
-            pass
+    # Добавляем поле notified для миграции
+    try:
+        cursor.execute("ALTER TABLE bookings ADD COLUMN notified BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
+    # Таблица логов администратора
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            admin_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     conn.commit()
 
+    # Заполнение компьютеров, если пусто
     cursor.execute("SELECT COUNT(*) FROM computers")
     if cursor.fetchone()[0] == 0:
         for i in range(1, 16):
@@ -54,6 +74,14 @@ def init_db():
 
 def get_db_connection():
     return sqlite3.connect(DB_PATH)
+
+# --- Хеширование паролей (bcrypt) ---
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
 # --- Users ---
 def register_user(user_id: int, nickname: str, name: str, phone: str, password_hash: str,
@@ -83,20 +111,18 @@ def register_user(user_id: int, nickname: str, name: str, phone: str, password_h
     finally:
         conn.close()
 
-def login_user(user_id: int, nickname: str, password_hash: str) -> bool:
+def login_user(user_id: int, nickname: str, password: str) -> bool:
+    """Принимает plain пароль, сверяет с хешем через bcrypt."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT password_hash FROM users WHERE nickname = ?", (nickname,))
     row = cursor.fetchone()
-    if row and row[0] == password_hash:
-        cursor.execute("""
-            UPDATE users
-            SET user_id = ?, is_registered = 1
-            WHERE nickname = ?
-        """, (user_id, nickname))
-        conn.commit()
-        conn.close()
-        return True
+    if row:
+        if verify_password(password, row[0]):
+            cursor.execute("UPDATE users SET user_id = ?, is_registered = 1 WHERE nickname = ?", (user_id, nickname))
+            conn.commit()
+            conn.close()
+            return True
     conn.close()
     return False
 
@@ -122,13 +148,55 @@ def get_all_users() -> list:
     return users
 
 # --- Computers ---
-def get_computers() -> list:
+def get_computers(active_only=True) -> list:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, number FROM computers WHERE is_active = 1 ORDER BY number")
+    if active_only:
+        cursor.execute("SELECT id, number, is_active FROM computers WHERE is_active = 1 ORDER BY number")
+    else:
+        cursor.execute("SELECT id, number, is_active FROM computers ORDER BY number")
     computers = cursor.fetchall()
     conn.close()
     return computers
+
+def add_computer(number: int) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO computers (number) VALUES (?)", (number,))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+def delete_computer(computer_id: int) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM bookings WHERE computer_id = ?", (computer_id,))
+    if cursor.fetchone():
+        conn.close()
+        return False
+    cursor.execute("DELETE FROM computers WHERE id = ?", (computer_id,))
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    conn.close()
+    return deleted
+
+def toggle_computer_active(computer_id: int) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT is_active FROM computers WHERE id = ?", (computer_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+    new_status = 0 if row[0] == 1 else 1
+    cursor.execute("UPDATE computers SET is_active = ? WHERE id = ?", (new_status, computer_id))
+    conn.commit()
+    conn.close()
+    return True
 
 # --- Bookings ---
 def is_computer_free(computer_id: int, start_date: str, start_time: str, end_date: str, end_time: str) -> bool:
@@ -150,8 +218,8 @@ def add_booking(user_id: int, computer_id: int, start_date: str, start_time: str
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO bookings (user_id, computer_id, start_date, start_time, end_date, end_time)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO bookings (user_id, computer_id, start_date, start_time, end_date, end_time, notified)
+        VALUES (?, ?, ?, ?, ?, ?, 0)
     """, (user_id, computer_id, start_date, start_time, end_date, end_time))
     conn.commit()
     conn.close()
@@ -193,3 +261,47 @@ def get_all_bookings() -> list:
     bookings = cursor.fetchall()
     conn.close()
     return bookings
+
+# --- Уведомления ---
+def get_bookings_to_notify(minutes_before: int) -> list:
+    import datetime
+    now = datetime.datetime.now()
+    target = now + datetime.timedelta(minutes=minutes_before)
+    target_date = target.strftime("%Y-%m-%d")
+    target_time = target.strftime("%H:%M")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT b.id, b.user_id, b.start_date, b.start_time, b.end_date, b.end_time, c.number
+        FROM bookings b
+        JOIN computers c ON b.computer_id = c.id
+        WHERE b.notified = 0
+          AND b.start_date = ? AND b.start_time = ?
+    """, (target_date, target_time))
+    bookings = cursor.fetchall()
+    conn.close()
+    return bookings
+
+def mark_notified(booking_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE bookings SET notified = 1 WHERE id = ?", (booking_id,))
+    conn.commit()
+    conn.close()
+
+# --- Логирование администратора ---
+def log_admin_action(admin_id: int, action: str, details: str = None):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO admin_logs (admin_id, action, details) VALUES (?, ?, ?)",
+                   (admin_id, action, details))
+    conn.commit()
+    conn.close()
+
+def get_admin_logs(limit=50) -> list:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT ?", (limit,))
+    logs = cursor.fetchall()
+    conn.close()
+    return logs

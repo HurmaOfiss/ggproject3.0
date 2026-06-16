@@ -4,8 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
 
 from config import ADMIN_ID
-from database import register_user, login_user, is_authorized, get_db_connection
-from utils import hash_password
+from database import register_user, login_user, is_authorized, get_db_connection, hash_password
 from states import RegisterState, LoginState
 from keyboards import reply_keyboard, unauth_reply_keyboard
 
@@ -61,6 +60,7 @@ async def register_password(message: types.Message, state: FSMContext):
     name = data["name"]
     phone = data["phone"]
     user = message.from_user
+    # Хешируем пароль через bcrypt
     password_hash = hash_password(password)
     success = register_user(user.id, nickname, name, phone, password_hash, user.username, user.full_name)
     if success:
@@ -89,12 +89,12 @@ async def login_nickname(message: types.Message, state: FSMContext):
     await message.answer("Введите пароль:")
 
 async def login_password(message: types.Message, state: FSMContext):
-    password = message.text.strip()
+    password = message.text.strip()  # plain пароль
     data = await state.get_data()
     nickname = data["nickname"]
     user = message.from_user
-    password_hash = hash_password(password)
-    success = login_user(user.id, nickname, password_hash)
+    # Передаём plain пароль, хеш-проверка будет внутри login_user через bcrypt
+    success = login_user(user.id, nickname, password)
     if success:
         await state.clear()
         await message.answer(
