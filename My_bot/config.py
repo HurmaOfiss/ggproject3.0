@@ -6,13 +6,13 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-TARIFFS_PHOTO_PATH = "цены.jpg"
+TARIFFS_PHOTO_PATH = "prices.jpg"
 EQUIPMENT_PHOTOS = [
-    "гарнитура1.jpg",
-    "гарнитура2.jpg",
-    "гарнитура3.jpg",
-    "гарнитура4.jpg",
-    "гарнитура5.jpg"
+    "headset1.jpg",
+    "headset2.jpg",
+    "headset3.jpg",
+    "headset4.jpg",
+    "headset5.jpg"
 ]
 
 # База данных будет лежать в подпапке data/
