@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.filters import Command, StateFilter
 
-from config import BOT_TOKEN, ADMIN_ID, NOTIFY_MINUTES
+from config import BOT_TOKEN, NOTIFY_MINUTES
 from database import init_db, get_bookings_to_notify, mark_notified
 from middlewares import AuthMiddleware, CallbackAuthMiddleware
 from states import RegisterState, LoginState, BookingState, AdminState
